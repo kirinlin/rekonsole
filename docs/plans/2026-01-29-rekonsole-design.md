@@ -21,8 +21,8 @@ Flags:
 
 Single `main.go` file. Two goroutines handle bidirectional I/O:
 
-- stdin -> serial port (tee to log file)
-- serial port -> stdout (tee to log file)
+- stdin -> serial port (fed to TX `lineLogger`)
+- serial port -> stdout (fed to RX `lineLogger`)
 
 Terminal is put into raw mode so keystrokes pass through immediately.
 
@@ -45,8 +45,12 @@ Terminal is put into raw mode so keystrokes pass through immediately.
 
 ## Log File
 
-- Filename: `YYYYMMDD-HHMMSS-raw.txt`
-- Content: raw bytes, no formatting or per-line timestamps
+- Filename: `YYYYMMDD-HHMMSS-session.log`
+- Each line is timestamped with millisecond precision and tagged with direction:
+  - `[TX]` — user input (stdin to serial)
+  - `[RX]` — serial output (serial to stdout, includes device echo)
+- Format: `2026-02-03 10:30:45.123 [TX] command here`
+- Line-buffered via `lineLogger` struct; partial lines flushed on shutdown
 
 ## Project Structure
 
