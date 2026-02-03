@@ -44,16 +44,22 @@ rekonsole <device> [flags]
 
 ```bash
 # Linux / macOS
-rekonsole /dev/ttyUSB0                # connect at 115200 baud
+rekonsole /dev/ttyUSB0               # connect at 115200 baud
 rekonsole /dev/ttyUSB0 -b 9600       # connect at 9600 baud
 rekonsole /dev/ttyACM0 -no-log       # connect without logging
 
 # Windows
-rekonsole COM3                        # connect at 115200 baud
+rekonsole COM3                       # connect at 115200 baud
 rekonsole COM3 -b 9600               # connect at 9600 baud
 ```
 
-All I/O is automatically recorded to a file named `YYYYMMDD-HHMMSS-raw.txt` in the current directory unless `-no-log` is specified.
+All I/O is automatically recorded to a file named `YYYYMMDD-HHMMSS-session.log` in the current directory unless `-no-log` is specified. Each line in the log is timestamped and tagged with `[TX]` (user input) or `[RX]` (serial output):
+
+```
+2026-02-03 10:30:45.123 [TX] ls -la
+2026-02-03 10:30:45.234 [RX] ls -la
+2026-02-03 10:30:45.345 [RX] total 42
+```
 
 Press `Ctrl+C` to disconnect.
 

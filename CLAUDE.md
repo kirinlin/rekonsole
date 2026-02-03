@@ -16,6 +16,6 @@ No test suite, Makefile, or linter configured yet.
 
 Single-file Go CLI (`main.go`) that opens a raw serial port connection and provides an interactive terminal session.
 
-**Core flow:** Two goroutines handle bidirectional I/O — one pipes stdin to the serial port, the other pipes serial output to stdout. Both tee data to a timestamped log file. The terminal is set to raw mode via `golang.org/x/term` so keystrokes pass through immediately. Graceful shutdown on SIGINT/SIGTERM restores the terminal, flushes the log, and closes the port.
+**Core flow:** Two goroutines handle bidirectional I/O — one pipes stdin to the serial port, the other pipes serial output to stdout. Each goroutine feeds data to a `lineLogger` that buffers bytes, and on each newline writes a timestamped line tagged with `[TX]` (user input) or `[RX]` (serial output) to the session log file. The terminal is set to raw mode via `golang.org/x/term` so keystrokes pass through immediately. Graceful shutdown on SIGINT/SIGTERM restores the terminal, flushes both loggers, and closes the port.
 
 **Key dependencies:** `go.bug.st/serial` for serial port access, `golang.org/x/term` for raw terminal mode.
