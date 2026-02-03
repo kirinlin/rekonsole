@@ -1,17 +1,57 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"go.bug.st/serial"
 	"golang.org/x/term"
 )
+
+// lineLogger buffers incoming bytes and writes timestamped, prefixed lines
+// to the underlying file whenever a newline is encountered.
+type lineLogger struct {
+	mu     sync.Mutex
+	prefix string
+	out    *os.File
+	buf    []byte
+}
+
+func (l *lineLogger) Write(p []byte) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buf = append(l.buf, p...)
+	for {
+		idx := bytes.IndexByte(l.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		line := l.buf[:idx]
+		// Strip trailing \r if present
+		line = bytes.TrimRight(line, "\r")
+		ts := time.Now().Format("2006-01-02 15:04:05.000")
+		fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+		l.buf = l.buf[idx+1:]
+	}
+}
+
+func (l *lineLogger) Flush() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.buf) > 0 {
+		line := bytes.TrimRight(l.buf, "\r")
+		ts := time.Now().Format("2006-01-02 15:04:05.000")
+		fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+		l.buf = nil
+	}
+}
 
 func main() {
 	baud := flag.Int("baud", 115200, "baud rate")
@@ -53,7 +93,7 @@ func main() {
 	// Set up log file
 	var logFile *os.File
 	if !*noLog {
-		filename := time.Now().Format("20060102-150405") + "-raw.txt"
+		filename := time.Now().Format("20060102-150405") + "-session.log"
 		logFile, err = os.Create(filename)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: cannot create log file: %v\n", err)
@@ -71,6 +111,13 @@ func main() {
 		defer term.Restore(int(os.Stdin.Fd()), oldState)
 	}
 
+	// Set up line loggers for TX/RX
+	var txLog, rxLog *lineLogger
+	if logFile != nil {
+		txLog = &lineLogger{prefix: "TX", out: logFile}
+		rxLog = &lineLogger{prefix: "RX", out: logFile}
+	}
+
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -83,8 +130,8 @@ func main() {
 			n, err := port.Read(buf)
 			if n > 0 {
 				os.Stdout.Write(buf[:n])
-				if logFile != nil {
-					logFile.Write(buf[:n])
+				if rxLog != nil {
+					rxLog.Write(buf[:n])
 				}
 			}
 			if err != nil {
@@ -108,8 +155,8 @@ func main() {
 			n, err := os.Stdin.Read(buf)
 			if n > 0 {
 				port.Write(buf[:n])
-				if logFile != nil {
-					logFile.Write(buf[:n])
+				if txLog != nil {
+					txLog.Write(buf[:n])
 				}
 			}
 			if err != nil {
@@ -123,5 +170,13 @@ func main() {
 	select {
 	case <-sigCh:
 	case <-done:
+	}
+
+	// Flush any partial lines before exit
+	if txLog != nil {
+		txLog.Flush()
+	}
+	if rxLog != nil {
+		rxLog.Flush()
 	}
 }
