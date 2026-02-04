@@ -35,8 +35,8 @@ type lineLogger struct {
 }
 ```
 
-- **`Write(p []byte)`** — appends data to the buffer, scans for `\n`. On each newline, flushes the buffered line with timestamp and prefix. Strips trailing `\r`.
-- **`Flush()`** — writes any remaining partial line on shutdown.
+- **`Write(p []byte)`** — appends data to the buffer, scans for the earliest `\r` or `\n` delimiter. On each line break, flushes the buffered line with timestamp and prefix. Handles `\r\n` and `\n\r` pairs by skipping the second byte to avoid duplicate empty lines. This ensures TX lines are logged immediately when the user presses Enter in raw mode (which sends `\r`, not `\n`).
+- **`Flush()`** — writes any remaining partial line on shutdown, stripping trailing `\r\n`.
 - Thread-safe via `sync.Mutex` since TX and RX goroutines share the same log file.
 
 ### Integration

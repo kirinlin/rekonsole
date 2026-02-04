@@ -13,8 +13,9 @@ Arguments:
   <device>    Serial device path (e.g. /dev/ttyUSB0)
 
 Flags:
-  --baud, -b    Baud rate (default: 115200)
-  --log, -l     Enable/disable logging (default: true)
+  --baud, -b      Baud rate (default: 115200)
+  --no-log, -l    Disable I/O logging
+  --version, -v   Print version and exit
 ```
 
 ## Architecture
@@ -36,11 +37,13 @@ Terminal is put into raw mode so keystrokes pass through immediately.
 
 - Device not found / can't open -> error message, exit 1
 - Serial connection drops -> print notice, exit cleanly
+- Device disappears (powered off) -> detected via `os.Stat` check on read timeout, exit cleanly with notice
 - Log file creation fails -> warning, continue without logging
 
 ## Exit Behavior
 
-- Ctrl+C / SIGTERM -> graceful shutdown: close serial, flush log, restore terminal
+- Ctrl+C / SIGTERM -> graceful shutdown: explicitly close serial port (unblocks any pending read), flush log, restore terminal
+- Device power-off -> 500ms read timeout detects device disappearance, exit cleanly
 - No custom escape sequence needed
 
 ## Log File
@@ -51,6 +54,16 @@ Terminal is put into raw mode so keystrokes pass through immediately.
   - `[RX]` — serial output (serial to stdout, includes device echo)
 - Format: `2026-02-03 10:30:45.123 [TX] command here`
 - Line-buffered via `lineLogger` struct; partial lines flushed on shutdown
+
+## Version
+
+The version is stored as a `var` in `main.go` (currently `0.1.0`) and can be overridden at build time:
+
+```bash
+go build -ldflags "-X main.version=0.2.0" -o rekonsole .
+```
+
+The version is displayed via `-v`/`--version` and in the startup banner.
 
 ## Project Structure
 

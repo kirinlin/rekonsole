@@ -29,16 +29,26 @@ func (l *lineLogger) Write(p []byte) {
 	defer l.mu.Unlock()
 	l.buf = append(l.buf, p...)
 	for {
-		idx := bytes.IndexByte(l.buf, '\n')
+		// Find the earliest line delimiter: either \n or \r.
+		// Raw terminal sends \r on Enter; serial devices typically send \r\n.
+		idxN := bytes.IndexByte(l.buf, '\n')
+		idxR := bytes.IndexByte(l.buf, '\r')
+		idx := idxN
+		if idx < 0 || (idxR >= 0 && idxR < idx) {
+			idx = idxR
+		}
 		if idx < 0 {
 			break
 		}
 		line := l.buf[:idx]
-		// Strip trailing \r if present
-		line = bytes.TrimRight(line, "\r")
+		delim := l.buf[idx]
 		ts := time.Now().Format("2006-01-02 15:04:05.000")
 		fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
 		l.buf = l.buf[idx+1:]
+		// Skip the paired byte of a \r\n or \n\r sequence to avoid a duplicate empty line.
+		if len(l.buf) > 0 && (l.buf[0] == '\n' || l.buf[0] == '\r') && l.buf[0] != delim {
+			l.buf = l.buf[1:]
+		}
 	}
 }
 
@@ -46,18 +56,22 @@ func (l *lineLogger) Flush() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if len(l.buf) > 0 {
-		line := bytes.TrimRight(l.buf, "\r")
+		line := bytes.TrimRight(l.buf, "\r\n")
 		ts := time.Now().Format("2006-01-02 15:04:05.000")
 		fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
 		l.buf = nil
 	}
 }
 
+var version = "0.1.0"
+
 func main() {
 	baud := flag.Int("baud", 115200, "baud rate")
 	flag.IntVar(baud, "b", 115200, "baud rate (shorthand)")
 	noLog := flag.Bool("no-log", false, "disable I/O logging")
 	flag.BoolVar(noLog, "l", false, "disable I/O logging (shorthand)")
+	showVersion := flag.Bool("version", false, "print version and exit")
+	flag.BoolVar(showVersion, "v", false, "print version and exit (shorthand)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: rekonsole <device> [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "Establish a raw USB serial console connection.\n\n")
@@ -67,6 +81,11 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("rekonsole %s\n", version)
+		return
+	}
 
 	if flag.NArg() < 1 {
 		flag.Usage()
@@ -88,7 +107,11 @@ func main() {
 	}
 	defer port.Close()
 
-	fmt.Fprintf(os.Stderr, "Connected to %s at %d baud. Press Ctrl+C to exit.\n", device, *baud)
+	// Set a read timeout so Read returns periodically even when no data
+	// arrives. Without this, Read blocks forever if the device powers off.
+	port.SetReadTimeout(500 * time.Millisecond)
+
+	fmt.Fprintf(os.Stderr, "rekonsole %s — Connected to %s at %d baud. Press Ctrl+C to exit.\n", version, device, *baud)
 
 	// Set up log file
 	var logFile *os.File
@@ -145,6 +168,17 @@ func main() {
 				close(done)
 				return
 			}
+			// On timeout (0 bytes, nil error), check if the device still exists.
+			if n == 0 {
+				if _, statErr := os.Stat(device); statErr != nil {
+					if oldState != nil {
+						term.Restore(int(os.Stdin.Fd()), oldState)
+					}
+					fmt.Fprintf(os.Stderr, "\nDevice %s disappeared (powered off?)\n", device)
+					close(done)
+					return
+				}
+			}
 		}
 	}()
 
@@ -169,6 +203,9 @@ func main() {
 	// Wait for signal or connection end
 	select {
 	case <-sigCh:
+		// Close the port immediately so blocked Read returns an error
+		// instead of waiting for the next timeout cycle.
+		port.Close()
 	case <-done:
 	}
 

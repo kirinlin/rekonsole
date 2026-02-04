@@ -39,6 +39,7 @@ rekonsole <device> [flags]
 |------|---------|-------------|
 | `-b`, `-baud` | `115200` | Baud rate |
 | `-l`, `-no-log` | `false` | Disable I/O logging |
+| `-v`, `-version` | | Print version and exit |
 
 **Examples:**
 
@@ -61,7 +62,7 @@ All I/O is automatically recorded to a file named `YYYYMMDD-HHMMSS-session.log` 
 2026-02-03 10:30:45.345 [RX] total 42
 ```
 
-Press `Ctrl+C` to disconnect.
+Press `Ctrl+C` to disconnect. If the serial device is powered off or disconnected, rekonsole detects the disappearance and exits automatically.
 
 ## License
 
