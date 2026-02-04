@@ -37,13 +37,14 @@ Terminal is put into raw mode so keystrokes pass through immediately.
 
 - Device not found / can't open -> error message, exit 1
 - Serial connection drops -> print notice, exit cleanly
-- Device disappears (powered off) -> detected via `os.Stat` check on read timeout, exit cleanly with notice
+- Device disappears (powered off) -> serial read returns error, exit cleanly
 - Log file creation fails -> warning, continue without logging
 
 ## Exit Behavior
 
-- Ctrl+C / SIGTERM -> graceful shutdown: explicitly close serial port (unblocks any pending read), flush log, restore terminal
-- Device power-off -> 500ms read timeout detects device disappearance, exit cleanly
+- Ctrl+C -> detected as byte 0x03 in raw mode stdin (cross-platform, including Windows Terminal); also handled via SIGINT on Unix
+- SIGTERM -> graceful shutdown: explicitly close serial port (unblocks any pending read), flush log, restore terminal
+- 500ms read timeout on the serial port prevents Read from blocking forever, ensuring port.Close() on signal takes effect
 - No custom escape sequence needed
 
 ## Log File

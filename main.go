@@ -168,17 +168,9 @@ func main() {
 				close(done)
 				return
 			}
-			// On timeout (0 bytes, nil error), check if the device still exists.
-			if n == 0 {
-				if _, statErr := os.Stat(device); statErr != nil {
-					if oldState != nil {
-						term.Restore(int(os.Stdin.Fd()), oldState)
-					}
-					fmt.Fprintf(os.Stderr, "\nDevice %s disappeared (powered off?)\n", device)
-					close(done)
-					return
-				}
-			}
+			// On timeout (0 bytes, nil error), just loop back.
+			// The timeout exists only to prevent Read from blocking
+			// forever, so that port.Close() on signal can take effect.
 		}
 	}()
 
@@ -188,6 +180,13 @@ func main() {
 		for {
 			n, err := os.Stdin.Read(buf)
 			if n > 0 {
+				// In raw mode, Ctrl+C arrives as byte 0x03 instead of
+				// generating SIGINT (especially on Windows). Detect it
+				// and trigger shutdown.
+				if bytes.ContainsRune(buf[:n], 0x03) {
+					close(done)
+					return
+				}
 				port.Write(buf[:n])
 				if txLog != nil {
 					txLog.Write(buf[:n])
