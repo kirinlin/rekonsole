@@ -55,6 +55,7 @@ Terminal is put into raw mode so keystrokes pass through immediately.
   - `[RX]` — serial output (serial to stdout, includes device echo)
 - Format: `2026-02-03 10:30:45.123 [TX] command here`
 - Line-buffered via `lineLogger` struct; partial lines flushed on shutdown
+- Password redaction: when RX contains `password:`, `passphrase:`, or `secret:` (case-insensitive), logging is suppressed until the next newline
 
 ## Version
 

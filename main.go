@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -15,13 +17,23 @@ import (
 	"golang.org/x/term"
 )
 
+// sensitivePrompts lists patterns that trigger log redaction.
+// When an RX line contains any of these (case-insensitive), logging
+// is suppressed until the password entry is complete.
+var sensitivePrompts = []string{
+	"password:",
+	"passphrase:",
+	"secret:",
+}
+
 // lineLogger buffers incoming bytes and writes timestamped, prefixed lines
 // to the underlying file whenever a newline is encountered.
 type lineLogger struct {
-	mu     sync.Mutex
-	prefix string
-	out    *os.File
-	buf    []byte
+	mu           sync.Mutex
+	prefix       string
+	out          *os.File
+	buf          []byte
+	passwordMode *atomic.Bool // shared flag: suppresses logging when true
 }
 
 func (l *lineLogger) Write(p []byte) {
@@ -42,8 +54,12 @@ func (l *lineLogger) Write(p []byte) {
 		}
 		line := l.buf[:idx]
 		delim := l.buf[idx]
-		ts := time.Now().Format("2006-01-02 15:04:05.000")
-		fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+
+		if l.passwordMode != nil && !l.passwordMode.Load() {
+			ts := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+		}
+
 		l.buf = l.buf[idx+1:]
 		// Skip the paired byte of a \r\n or \n\r sequence to avoid a duplicate empty line.
 		if len(l.buf) > 0 && (l.buf[0] == '\n' || l.buf[0] == '\r') && l.buf[0] != delim {
@@ -57,10 +73,23 @@ func (l *lineLogger) Flush() {
 	defer l.mu.Unlock()
 	if len(l.buf) > 0 {
 		line := bytes.TrimRight(l.buf, "\r\n")
-		ts := time.Now().Format("2006-01-02 15:04:05.000")
-		fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+		if l.passwordMode == nil || !l.passwordMode.Load() {
+			ts := time.Now().Format("2006-01-02 15:04:05.000")
+			fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+		}
 		l.buf = nil
 	}
+}
+
+// matchesSensitivePrompt checks if data contains a password prompt pattern.
+func matchesSensitivePrompt(data []byte) bool {
+	lower := strings.ToLower(string(data))
+	for _, pat := range sensitivePrompts {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+	return false
 }
 
 var version = "0.1.0"
@@ -134,17 +163,25 @@ func main() {
 		defer term.Restore(int(os.Stdin.Fd()), oldState)
 	}
 
+	// Shared password mode flag: when true, both TX and RX logging are suppressed.
+	passwordMode := &atomic.Bool{}
+
 	// Set up line loggers for TX/RX
 	var txLog, rxLog *lineLogger
 	if logFile != nil {
-		txLog = &lineLogger{prefix: "TX", out: logFile}
-		rxLog = &lineLogger{prefix: "RX", out: logFile}
+		txLog = &lineLogger{prefix: "TX", out: logFile, passwordMode: passwordMode}
+		rxLog = &lineLogger{prefix: "RX", out: logFile, passwordMode: passwordMode}
 	}
 
 	// Handle signals for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	done := make(chan struct{})
+
+	// rxBuf accumulates RX data for sensitive prompt detection.
+	// It is reset on each newline.
+	var rxBufMu sync.Mutex
+	var rxBuf []byte
 
 	// serial -> stdout (+ log)
 	go func() {
@@ -153,6 +190,24 @@ func main() {
 			n, err := port.Read(buf)
 			if n > 0 {
 				os.Stdout.Write(buf[:n])
+
+				// Detect password prompts in the RX stream.
+				rxBufMu.Lock()
+				rxBuf = append(rxBuf, buf[:n]...)
+				if matchesSensitivePrompt(rxBuf) && !passwordMode.Load() {
+					passwordMode.Store(true)
+				}
+				// Reset detection buffer on newline (password entry complete).
+				if bytes.ContainsAny(buf[:n], "\r\n") {
+					if passwordMode.Load() {
+						// The newline after a password prompt means the
+						// user has finished entering the password.
+						passwordMode.Store(false)
+					}
+					rxBuf = nil
+				}
+				rxBufMu.Unlock()
+
 				if rxLog != nil {
 					rxLog.Write(buf[:n])
 				}

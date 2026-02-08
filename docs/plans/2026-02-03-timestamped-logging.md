@@ -28,16 +28,21 @@ The echoed input is still present in the `[RX]` stream but is now clearly distin
 
 ```go
 type lineLogger struct {
-    mu     sync.Mutex
-    prefix string   // "TX" or "RX"
-    out    *os.File // log file handle
-    buf    []byte   // incomplete line buffer
+    mu           sync.Mutex
+    prefix       string       // "TX" or "RX"
+    out          *os.File     // log file handle
+    buf          []byte       // incomplete line buffer
+    passwordMode *atomic.Bool // shared flag: suppresses logging when true
 }
 ```
 
-- **`Write(p []byte)`** — appends data to the buffer, scans for the earliest `\r` or `\n` delimiter. On each line break, flushes the buffered line with timestamp and prefix. Handles `\r\n` and `\n\r` pairs by skipping the second byte to avoid duplicate empty lines. This ensures TX lines are logged immediately when the user presses Enter in raw mode (which sends `\r`, not `\n`).
-- **`Flush()`** — writes any remaining partial line on shutdown, stripping trailing `\r\n`.
+- **`Write(p []byte)`** — appends data to the buffer, scans for the earliest `\r` or `\n` delimiter. On each line break, flushes the buffered line with timestamp and prefix (unless `passwordMode` is true). Handles `\r\n` and `\n\r` pairs by skipping the second byte to avoid duplicate empty lines. This ensures TX lines are logged immediately when the user presses Enter in raw mode (which sends `\r`, not `\n`).
+- **`Flush()`** — writes any remaining partial line on shutdown, stripping trailing `\r\n`. Respects `passwordMode`.
 - Thread-safe via `sync.Mutex` since TX and RX goroutines share the same log file.
+
+### Password redaction
+
+When the RX stream contains a sensitive prompt pattern (`password:`, `passphrase:`, `secret:` — case-insensitive), a shared `atomic.Bool` flag is set to true. Both TX and RX loggers check this flag and suppress output while it is set. The flag is cleared when a newline is received after the prompt, indicating password entry is complete. This prevents passwords from appearing in session logs.
 
 ### Integration
 

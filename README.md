@@ -62,6 +62,8 @@ All I/O is automatically recorded to a file named `YYYYMMDD-HHMMSS-session.log` 
 2026-02-03 10:30:45.345 [RX] total 42
 ```
 
+**Password redaction:** When a password prompt is detected (`password:`, `passphrase:`, or `secret:`), logging is automatically suppressed until the password entry is complete. The prompt and password are displayed normally on the terminal but do not appear in the session log.
+
 Press `Ctrl+C` to disconnect. If the serial device is powered off or disconnected, rekonsole detects the disappearance and exits automatically.
 
 ## License
