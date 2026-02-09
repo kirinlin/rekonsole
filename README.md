@@ -47,7 +47,7 @@ rekonsole <device> [flags]
 # Linux / macOS
 rekonsole /dev/ttyUSB0               # connect at 115200 baud
 rekonsole /dev/ttyUSB0 -b 9600       # connect at 9600 baud
-rekonsole /dev/ttyACM0 -no-log       # connect without logging
+rekonsole /dev/ttyUSB0 -no-log       # connect without logging
 
 # Windows
 rekonsole COM3                       # connect at 115200 baud
