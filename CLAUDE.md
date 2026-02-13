@@ -23,4 +23,6 @@ Single-file Go CLI (`main.go`) that opens a raw serial port connection and provi
 
 **Password redaction:** When the RX stream contains a sensitive prompt pattern (`password:`, `passphrase:`, `secret:` — case-insensitive), a shared `atomic.Bool` flag (`passwordMode`) is set. While this flag is true, both TX and RX loggers suppress output to the log file. The flag is cleared when the next newline is received (indicating password entry is complete). This prevents passwords from appearing in session logs while still displaying them normally on the terminal.
 
+**Escape sequence conversion:** ANSI escape sequences in logged data are converted to readable Unicode symbols. Arrow keys become `↑↓←→`, navigation keys become `⇱⇲⇞⇟`, and function keys become `[F1]`-`[F12]`. This makes session logs human-readable without raw escape codes.
+
 **Key dependencies:** `go.bug.st/serial` for serial port access, `golang.org/x/term` for raw terminal mode.

@@ -26,6 +26,61 @@ var sensitivePrompts = []string{
 	"secret:",
 }
 
+// escapeSequences maps ANSI escape sequences to readable Unicode symbols.
+var escapeSequences = map[string]string{
+	// Arrow keys
+	"\x1b[A": "↑", // Up
+	"\x1b[B": "↓", // Down
+	"\x1b[C": "→", // Right
+	"\x1b[D": "←", // Left
+	// Navigation keys
+	"\x1b[H":  "⇱", // Home
+	"\x1b[F":  "⇲", // End
+	"\x1b[1~": "⇱", // Home (alternate)
+	"\x1b[4~": "⇲", // End (alternate)
+	"\x1b[5~": "⇞", // Page Up
+	"\x1b[6~": "⇟", // Page Down
+	"\x1b[2~": "⎀", // Insert
+	"\x1b[3~": "⌦", // Delete
+	// Function keys
+	"\x1bOP":   "[F1]",
+	"\x1bOQ":   "[F2]",
+	"\x1bOR":   "[F3]",
+	"\x1bOS":   "[F4]",
+	"\x1b[15~": "[F5]",
+	"\x1b[17~": "[F6]",
+	"\x1b[18~": "[F7]",
+	"\x1b[19~": "[F8]",
+	"\x1b[20~": "[F9]",
+	"\x1b[21~": "[F10]",
+	"\x1b[23~": "[F11]",
+	"\x1b[24~": "[F12]",
+	// Control characters
+	"\x1b": "␛", // Escape key alone
+}
+
+// convertEscapeSequences replaces ANSI escape sequences with readable Unicode symbols.
+func convertEscapeSequences(data []byte) []byte {
+	result := string(data)
+	// Process longer sequences first to avoid partial matches
+	// (e.g., "\x1b[15~" before "\x1b")
+	orderedKeys := []string{
+		"\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~",
+		"\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~",
+		"\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS",
+		"\x1b[1~", "\x1b[2~", "\x1b[3~", "\x1b[4~", "\x1b[5~", "\x1b[6~",
+		"\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D",
+		"\x1b[H", "\x1b[F",
+		"\x1b",
+	}
+	for _, seq := range orderedKeys {
+		if symbol, ok := escapeSequences[seq]; ok {
+			result = strings.ReplaceAll(result, seq, symbol)
+		}
+	}
+	return []byte(result)
+}
+
 // lineLogger buffers incoming bytes and writes timestamped, prefixed lines
 // to the underlying file whenever a newline is encountered.
 type lineLogger struct {
@@ -57,7 +112,9 @@ func (l *lineLogger) Write(p []byte) {
 
 		if l.passwordMode != nil && !l.passwordMode.Load() {
 			ts := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+			// Convert escape sequences to readable Unicode symbols for logging
+			displayLine := convertEscapeSequences(line)
+			fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, displayLine)
 		}
 
 		l.buf = l.buf[idx+1:]
@@ -75,7 +132,9 @@ func (l *lineLogger) Flush() {
 		line := bytes.TrimRight(l.buf, "\r\n")
 		if l.passwordMode == nil || !l.passwordMode.Load() {
 			ts := time.Now().Format("2006-01-02 15:04:05.000")
-			fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, line)
+			// Convert escape sequences to readable Unicode symbols for logging
+			displayLine := convertEscapeSequences(line)
+			fmt.Fprintf(l.out, "%s [%s] %s\n", ts, l.prefix, displayLine)
 		}
 		l.buf = nil
 	}
