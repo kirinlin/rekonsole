@@ -14,11 +14,17 @@ Or build from source:
 git clone https://github.com/kirinlin/rekonsole.git
 cd rekonsole
 
-# Linux / macOS
-go build -o rekonsole .
+# Linux ARM64
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o rekonsole .
 
 # Windows
-go build -o rekonsole.exe .
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o rekonsole.exe .
+
+# macOS (Apple Silicon)
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o rekonsole .
+
+# macOS (Intel)
+CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o rekonsole .
 ```
 
 ## Usage
