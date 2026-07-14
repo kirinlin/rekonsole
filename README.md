@@ -72,6 +72,12 @@ All I/O is automatically recorded to a file named `YYYYMMDD-HHMMSS-session.log` 
 
 Press `Ctrl+C` to disconnect. If the serial device is powered off or disconnected, rekonsole detects the disappearance and exits automatically.
 
+## Development
+
+```bash
+go test ./...
+```
+
 ## License
 
 [MIT](LICENSE)
